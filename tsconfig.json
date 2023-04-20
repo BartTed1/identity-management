@@ -5,7 +5,9 @@
         "target": "es2021",
         "moduleResolution": "NodeNext",
         "sourceMap": true,
-        "outDir": "dist"
+        "outDir": "dist",
+        "experimentalDecorators": true,
+        "emitDecoratorMetadata": true
     },
     "lib": ["es2021"],
     "include": ["src/**/*"]
