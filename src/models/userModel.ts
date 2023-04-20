@@ -9,7 +9,7 @@ export class User {
     @Column()
     username: string;
 
-    @Column()
+    @Column({length: 60})
     password: string;
 
     @Column()
@@ -17,21 +17,23 @@ export class User {
 
     @Column()
     role: string;
-    constructor(username: string, password: string, email: string, role: string) {
+
+    @Column({length: 29})
+    salt: string;
+
+    constructor(username: string, password: string, email: string, role: string, salt: string) {
         this.username = username;
         this.password = password;
         this.email = email;
         this.role = role;
+        this.salt = salt;
     }
 
     public async save() {
-        const user = await AppDataSource.manager.findOneBy(User, { username: this.username });
-        if (user) return Promise.reject(new TypeError("Username already exists"));
         try {
             await AppDataSource.manager.save(this);
         } catch (err) {
             return Promise.reject(new TypeError("Invalid arguments"));
         }
-
     }
 }

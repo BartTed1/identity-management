@@ -3,32 +3,17 @@ import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { User } from "../models/userModel.js";
+import AppDataSource from "../db.js";
 
 export default class UserController {
-
-	// public static async register(username: string, password: string, email: string, role: string);
-	// public static async register(user: User);
-	// public static async register(arg1: any, arg2?: any, arg3?: any, arg4?: any) {
-	// 	try {
-	// 		if (arg1 instanceof User) {
-	// 			await arg1.save();
-	// 		} else if (typeof arg1 === "string") {
-	// 			if (typeof arg2 !== "string" || typeof arg3 !== "string" || typeof arg4 !== "string") throw new TypeError("Invalid arguments type");
-	// 			const user = new User(arg1, arg2, arg3, arg4);
-	// 			await user.save();
-	// 		}
-	// 		else throw new TypeError("Invalid arguments");
-	// 	} catch (err) {
-	// 		return Promise.reject(err);
-	// 	}
-	// }
-
-	public static async register(req: Request, res: Response) {
+	public static async register(req: Request, res: Response, next: Function) {
 		const { username, password, email, role } = req.body;
 		if (!username || !password || !email || !role) return res.status(400).send("Missing arguments");
 		else if (typeof username !== "string" || typeof password !== "string" || typeof email !== "string" || typeof role !== "string") return res.status(400).send("Invalid arguments type");
 		try {
-			const user = new User(username, password, email, role);
+			const salt = await bcrypt.genSalt(10);
+			const hashedPassword = await bcrypt.hash(password, salt);
+			const user = new User(username, hashedPassword, email, role, salt);
 			await user.save();
 		} catch (err) {
 			if (err instanceof TypeError) {
@@ -39,5 +24,21 @@ export default class UserController {
 			}
 		}
 		return res.status(200).send("User registered");
+	}
+
+	public static async isUserExist(req: Request, res: Response, next: Function) {
+		try {
+			const userByEmail = await AppDataSource.manager.findOneBy(User,{email: req.body.email});
+			const userByUsername = await AppDataSource.manager.findOneBy(User,{username: req.body.username});
+			if (userByEmail || userByUsername) throw new TypeError(`The user with the given: ${userByEmail ? "email" : ""} ${userByUsername ? "username" : ""} already exists`);
+		} catch (err) {
+			if (err instanceof TypeError) {
+				return res.status(400).send(err.message);
+			}
+			else {
+				return res.status(500).send("Internal server error");
+			}
+		}
+		return next();
 	}
 }
