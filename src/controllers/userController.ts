@@ -29,8 +29,8 @@ export default class UserController {
 	public static async isUserExist(req: Request, res: Response, next: Function) {
 		try {
 			const { username, email } = req.body;
-			const userByEmail = await User.isEmailExist(email);
-			const userByUsername = await User.isUsernameExist(username);
+			const userByEmail = await User.getUserByEmail(email);
+			const userByUsername = await User.getUserByUsername(username);
 			if (userByEmail || userByUsername) throw new TypeError(`The user with the given: ${userByEmail ? "email" : ""} ${userByUsername ? "username" : ""} already exists`);
 		} catch (err) {
 			if (err instanceof TypeError) {
@@ -41,5 +41,49 @@ export default class UserController {
 			}
 		}
 		return next();
+	}
+
+	public static async authenticate(req: Request, res: Response, next: Function) {
+		const { login, password } = req.body;
+		if (!login || !password) return res.status(400).send("Missing arguments");
+		else if (typeof login !== "string" || typeof password !== "string") return res.status(400).send("Invalid arguments type");
+
+		// username and email check
+		let user;
+		try {
+			const userByEmail = await User.getUserByEmail(login);
+			if (!userByEmail) {
+				const userByUsername = await User.getUserByUsername(login);
+				if (!userByUsername) throw new TypeError("The user with the given username or email does not exist");
+				user = userByUsername;
+			}
+			else {
+				user = userByEmail;
+			}
+			if (!user) throw new TypeError("The user with the given username or email does not exist");
+		} catch (err) {
+			if (err instanceof TypeError) {
+				return res.status(400).send(err.message);
+			}
+			else {
+				return res.status(500).send("Internal server error");
+			}
+		}
+
+		// password check
+		bcrypt.compare(password, user.password, (err, result) => {
+			if (err) return res.status(500).send("Internal server error");
+			if (result) {
+				const token = jwt.sign({
+					id: user.id,
+					username: user.username,
+					role: user.role,
+					ip: req.ip // using token from another ip will invalidate it
+				},
+					process.env.APP_SECRET);
+				return res.status(200).send(token);
+			}
+			else res.status(400).send("Invalid password");
+		});
 	}
 }

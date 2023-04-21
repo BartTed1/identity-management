@@ -37,21 +37,21 @@ export class User {
         }
     }
 
-    public static async isEmailExist(email: string) {
+    public static async getUserByEmail(email: string) {
         try {
             const user = await AppDataSource.manager.findOneBy(User,{email: email});
-            if (user) return true;
-            return false;
+            if (user) return user;
+            return null;
         } catch (err) {
             return Promise.reject(new TypeError("Invalid arguments"));
         }
     }
 
-    public static async isUsernameExist(username: string) {
+    public static async getUserByUsername(username: string) {
         try {
             const user = await AppDataSource.manager.findOneBy(User,{username: username});
-            if (user) return true;
-            return false;
+            if (user) return user;
+            return null;
         } catch (err) {
             return Promise.reject(new TypeError("Invalid arguments"));
         }
