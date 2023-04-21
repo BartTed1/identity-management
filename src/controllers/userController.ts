@@ -28,8 +28,9 @@ export default class UserController {
 
 	public static async isUserExist(req: Request, res: Response, next: Function) {
 		try {
-			const userByEmail = await AppDataSource.manager.findOneBy(User,{email: req.body.email});
-			const userByUsername = await AppDataSource.manager.findOneBy(User,{username: req.body.username});
+			const { username, email } = req.body;
+			const userByEmail = await User.isEmailExist(email);
+			const userByUsername = await User.isUsernameExist(username);
 			if (userByEmail || userByUsername) throw new TypeError(`The user with the given: ${userByEmail ? "email" : ""} ${userByUsername ? "username" : ""} already exists`);
 		} catch (err) {
 			if (err instanceof TypeError) {
