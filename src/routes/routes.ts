@@ -6,4 +6,6 @@ const router = express.Router();
 router.post("/api/v1/auth/register", UserController.isUserExist, UserController.register);
 
 router.post("/api/v1/auth/authenticate", UserController.authenticate);
+
+router.post("/api/v1/auth/authorize", UserController.verify);
 export default router;

@@ -1,5 +1,4 @@
 import app from "./app.js";
-import dbConnection from "./db.js";
 
 app.set("port", process.env.PORT || 8000);
 

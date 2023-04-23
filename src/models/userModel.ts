@@ -1,6 +1,13 @@
 import {Column, Entity, PrimaryGeneratedColumn} from "typeorm";
 import AppDataSource from "../db.js";
 
+export enum Permissions {
+    WRITE270 = "write270",
+    WRITE2000 = "write2000",
+    DELETE = "delete",
+    MODIFY = "modify"
+}
+
 @Entity("users")
 export class User {
     @PrimaryGeneratedColumn()
@@ -16,17 +23,13 @@ export class User {
     email: string;
 
     @Column()
-    role: string;
+    permissions: string;
 
-    @Column({length: 29})
-    salt: string;
-
-    constructor(username: string, password: string, email: string, role: string, salt: string) {
+    constructor(username: string, password: string, email: string, permissions: Permissions[]) {
         this.username = username;
         this.password = password;
         this.email = email;
-        this.role = role;
-        this.salt = salt;
+        this.permissions = permissions ? permissions.join(",") : "";
     }
 
     public async save() {

@@ -2,18 +2,17 @@
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
-import { User } from "../models/userModel.js";
-import AppDataSource from "../db.js";
+import { User, Permissions } from "../models/userModel.js";
 
 export default class UserController {
 	public static async register(req: Request, res: Response, next: Function) {
-		const { username, password, email, role } = req.body;
-		if (!username || !password || !email || !role) return res.status(400).send("Missing arguments");
-		else if (typeof username !== "string" || typeof password !== "string" || typeof email !== "string" || typeof role !== "string") return res.status(400).send("Invalid arguments type");
+		const { username, password, email } = req.body;
+		if (!username || !password || !email) return res.status(400).send("Missing arguments");
+		else if (typeof username !== "string" || typeof password !== "string" || typeof email !== "string") return res.status(400).send("Invalid arguments type");
 		try {
 			const salt = await bcrypt.genSalt(10);
 			const hashedPassword = await bcrypt.hash(password, salt);
-			const user = new User(username, hashedPassword, email, role, salt);
+			const user = new User(username, hashedPassword, email, [Permissions.WRITE270, Permissions.DELETE]); // default permissions
 			await user.save();
 		} catch (err) {
 			if (err instanceof TypeError) {
@@ -77,7 +76,6 @@ export default class UserController {
 				const token = jwt.sign({
 					id: user.id,
 					username: user.username,
-					role: user.role,
 					ip: req.ip // using token from another ip will invalidate it
 				},
 					process.env.APP_SECRET);
@@ -85,5 +83,27 @@ export default class UserController {
 			}
 			else res.status(400).send("Invalid password");
 		});
+	}
+
+	public static async verify(req: Request, res: Response, next: Function) {
+		const token = req.headers["authorization"];
+		if (!token) return res.status(401).send("Unauthorized");
+		console.log(token);
+		try {
+			jwt.verify(token, process.env.APP_SECRET, (err, decoded) => {
+				if (err) return res.status(401).send(err);
+				if (decoded.ip !== req.ip) return res.status(401).send("Unauthorized");
+
+				const issuedAt = decoded.iat * 1000;
+				const now = new Date();
+				const expireIn = parseInt(process.env.TOKEN_EXPIREIN);
+				if (issuedAt + expireIn <= now.getTime()) {
+					return res.status(401).send("Unauthorized - token expired");
+				}
+				else return res.status(200).send("Authorized");
+			});
+		} catch (err) {
+			return res.status(500).send("Internal server error");
+		}
 	}
 }
