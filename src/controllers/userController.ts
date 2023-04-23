@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { User, Permissions } from "../models/userModel.js";
+import {RevokedToken} from "../models/revokedToken.js";
 
 export default class UserController {
 	public static async register(req: Request, res: Response, next: Function) {
@@ -30,7 +31,7 @@ export default class UserController {
 			const { username, email } = req.body;
 			const userByEmail = await User.getUserByEmail(email);
 			const userByUsername = await User.getUserByUsername(username);
-			if (userByEmail || userByUsername) throw new TypeError(`The user with the given: ${userByEmail ? "email" : ""} ${userByUsername ? "username" : ""} already exists`);
+			if (userByEmail || userByUsername) return res.status(400).send(`The user with the given: ${userByEmail ? "email" : ""} ${userByUsername ? "username" : ""} already exists`);
 		} catch (err) {
 			if (err instanceof TypeError) {
 				return res.status(400).send(err.message);
@@ -53,13 +54,13 @@ export default class UserController {
 			const userByEmail = await User.getUserByEmail(login);
 			if (!userByEmail) {
 				const userByUsername = await User.getUserByUsername(login);
-				if (!userByUsername) throw new TypeError("The user with the given username or email does not exist");
+				if (!userByUsername) return res.status(400).send("The user with the given username or email does not exist");
 				user = userByUsername;
 			}
 			else {
 				user = userByEmail;
 			}
-			if (!user) throw new TypeError("The user with the given username or email does not exist");
+			if (!user) return res.status(400).send("The user with the given username or email does not exist");
 		} catch (err) {
 			if (err instanceof TypeError) {
 				return res.status(400).send(err.message);
@@ -85,49 +86,67 @@ export default class UserController {
 		});
 	}
 
+	private static async verifyToken(token: string, ip: string): Promise<{token: any, refreshable: boolean}> {
+		return new Promise(async (resolve, reject) => {
+			// is token revoked?
+			const revokedToken = await RevokedToken.isTokenRevoked(token);
+			if (revokedToken) return reject(new Error("Unauthenticated - token revoked"));
+
+			// is token valid?
+			jwt.verify(token, process.env.APP_SECRET, (err, decoded) => {
+				if (err) return reject(new Error("Unauthenticated"));
+				if (decoded.ip !== ip) {
+					const revokedToken = new RevokedToken(token);
+					revokedToken.revoke();
+					return reject(new Error("Unauthenticated - token revoked"));
+				}
+				const issuedAt = decoded.iat * 1000;
+				const now = new Date();
+				const expireIn = parseInt(process.env.TOKEN_EXPIREIN);
+				const timeLeft = issuedAt + expireIn - now.getTime();
+				const refreshTime = parseInt(process.env.TOKEN_REFRESH);
+
+				// is token expired?
+				if (timeLeft <= 0) return reject(new Error("Unauthenticated - token expired"));
+
+				const result = {
+					token: decoded,
+					refreshable: timeLeft < refreshTime // if timeLeft is less than refreshTime, token is refreshable
+				}
+				return resolve(result);
+			});
+		});
+	}
+
 	public static async verify(req: Request, res: Response, next: Function) {
 		const token = req.headers["authorization"];
-		if (!token) return res.status(400).send("Unauthenticated");
-		jwt.verify(token, process.env.APP_SECRET, (err, decoded) => {
-			if (err) return res.status(401).send("Unauthenticated");
-			if (decoded.ip !== req.ip) return res.status(401).send("Unauthenticated");
+		if (!token) return res.status(400).send("Token must be provided");
+		if (typeof token !== "string") return res.status(400).send("Token must be a string");
 
-			const issuedAt = decoded.iat * 1000;
-			const now = new Date();
-			const expireIn = parseInt(process.env.TOKEN_EXPIREIN);
-			if (issuedAt + expireIn <= now.getTime()) {
-				return res.status(401).send("Unauthenticated - token expired");
-			}
-			else return next();
-		});
+		try {
+			await UserController.verifyToken(token, req.ip);
+		} catch (err) {
+			return res.status(401).send(err.message);
+		}
+		return next();
 	}
 
 	public static async refresh(req: Request, res: Response) {
 		const token = req.headers["authorization"];
 		if (!token) return res.status(400).send("Unauthenticated");
-		jwt.verify(token, process.env.APP_SECRET, (err, decoded) => {
-			if (err) return res.status(401).send("Unauthenticated");
-			if (decoded.ip !== req.ip) return res.status(401).send("Unauthenticated");
-			const issuedAt = decoded.iat * 1000;
-			const now = new Date();
-			const expireIn = parseInt(process.env.TOKEN_EXPIREIN);
-			const timeLeft = issuedAt + expireIn - now.getTime();
-			const refreshTime = parseInt(process.env.TOKEN_REFRESH);
+		if (typeof token !== "string") return res.status(400).send("Unauthenticated");
 
-			if (issuedAt + expireIn <= now.getTime()) {
-				return res.status(401).send("Unauthenticated - token expired");
-			}
-			else if (timeLeft > refreshTime) {
-				return res.status(401).send("Token can't be refreshed yet");
-			}
-
-			const token = jwt.sign({
-					id: decoded.id,
-					username: decoded.username,
-					ip: req.ip // using token from another ip will invalidate it
-				},
-				process.env.APP_SECRET);
-			return res.status(200).send(token);
-		});
+		try {
+			const result = await UserController.verifyToken(token, req.ip);
+			if (!result.refreshable) return res.status(400).send("Unauthenticated - token not refreshable");
+			const newToken = jwt.sign({
+				id: result.token.id,
+				username: result.token.username,
+				ip: req.ip
+			}, process.env.APP_SECRET);
+			return res.status(200).send(newToken);
+		} catch (err) {
+			return res.status(401).send(err.message);
+		}
 	}
 }
