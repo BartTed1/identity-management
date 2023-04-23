@@ -7,5 +7,9 @@ router.post("/api/v1/auth/register", UserController.isUserExist, UserController.
 
 router.post("/api/v1/auth/authenticate", UserController.authenticate);
 
-router.post("/api/v1/auth/authorize", UserController.verify);
+router.post("/api/v1/auth/verify", UserController.verify, (req, res) => {
+	res.status(200).send("Authenticated");
+});
+
+router.post("/api/v1/auth/refresh", UserController.refresh);
 export default router;

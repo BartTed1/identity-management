@@ -87,23 +87,47 @@ export default class UserController {
 
 	public static async verify(req: Request, res: Response, next: Function) {
 		const token = req.headers["authorization"];
-		if (!token) return res.status(401).send("Unauthorized");
-		console.log(token);
-		try {
-			jwt.verify(token, process.env.APP_SECRET, (err, decoded) => {
-				if (err) return res.status(401).send(err);
-				if (decoded.ip !== req.ip) return res.status(401).send("Unauthorized");
+		if (!token) return res.status(400).send("Unauthenticated");
+		jwt.verify(token, process.env.APP_SECRET, (err, decoded) => {
+			if (err) return res.status(401).send("Unauthenticated");
+			if (decoded.ip !== req.ip) return res.status(401).send("Unauthenticated");
 
-				const issuedAt = decoded.iat * 1000;
-				const now = new Date();
-				const expireIn = parseInt(process.env.TOKEN_EXPIREIN);
-				if (issuedAt + expireIn <= now.getTime()) {
-					return res.status(401).send("Unauthorized - token expired");
-				}
-				else return res.status(200).send("Authorized");
-			});
-		} catch (err) {
-			return res.status(500).send("Internal server error");
-		}
+			const issuedAt = decoded.iat * 1000;
+			const now = new Date();
+			const expireIn = parseInt(process.env.TOKEN_EXPIREIN);
+			if (issuedAt + expireIn <= now.getTime()) {
+				return res.status(401).send("Unauthenticated - token expired");
+			}
+			else return next();
+		});
+	}
+
+	public static async refresh(req: Request, res: Response) {
+		const token = req.headers["authorization"];
+		if (!token) return res.status(400).send("Unauthenticated");
+		jwt.verify(token, process.env.APP_SECRET, (err, decoded) => {
+			if (err) return res.status(401).send("Unauthenticated");
+			if (decoded.ip !== req.ip) return res.status(401).send("Unauthenticated");
+			const issuedAt = decoded.iat * 1000;
+			const now = new Date();
+			const expireIn = parseInt(process.env.TOKEN_EXPIREIN);
+			const timeLeft = issuedAt + expireIn - now.getTime();
+			const refreshTime = parseInt(process.env.TOKEN_REFRESH);
+
+			if (issuedAt + expireIn <= now.getTime()) {
+				return res.status(401).send("Unauthenticated - token expired");
+			}
+			else if (timeLeft > refreshTime) {
+				return res.status(401).send("Token can't be refreshed yet");
+			}
+
+			const token = jwt.sign({
+					id: decoded.id,
+					username: decoded.username,
+					ip: req.ip // using token from another ip will invalidate it
+				},
+				process.env.APP_SECRET);
+			return res.status(200).send(token);
+		});
 	}
 }
