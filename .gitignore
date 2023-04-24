@@ -1,0 +1,11 @@
+dist/*
+node_modules
+.DS_Store
+dist/.env
+
+tests/*
+jest.config.js
+coverage/*
+
+dist/sslcert/cert.pem
+dist/sslcert/key.pem
