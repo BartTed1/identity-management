@@ -1,4 +1,3 @@
-
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
@@ -8,8 +7,8 @@ import {RevokedToken} from "../models/revokedToken.js";
 export default class UserController {
 	public static async register(req: Request, res: Response, next: Function) {
 		const { username, password, email } = req.body;
-		if (!username || !password || !email) return res.status(400).send("Missing arguments");
-		else if (typeof username !== "string" || typeof password !== "string" || typeof email !== "string") return res.status(400).send("Invalid arguments type");
+		if (!username || !password || !email) return res.status(400).json({error: "Missing arguments"});
+		else if (typeof username !== "string" || typeof password !== "string" || typeof email !== "string") return res.status(400).json({error: "Invalid arguments type"});
 		try {
 			const salt = await bcrypt.genSalt(10);
 			const hashedPassword = await bcrypt.hash(password, salt);
@@ -17,13 +16,13 @@ export default class UserController {
 			await user.save();
 		} catch (err) {
 			if (err instanceof TypeError) {
-				return res.status(400).send(err.message);
+				return res.status(400).json({error: err.message});
 			}
 			else {
-				return res.status(500).send("Internal server error");
+				return res.status(500).json({error: "Internal server error"});
 			}
 		}
-		return res.status(200).send("User registered");
+		return res.status(200).json({message: "User registered"});
 	}
 
 	public static async isUserExist(req: Request, res: Response, next: Function) {
@@ -31,13 +30,13 @@ export default class UserController {
 			const { username, email } = req.body;
 			const userByEmail = await User.getUserByEmail(email);
 			const userByUsername = await User.getUserByUsername(username);
-			if (userByEmail || userByUsername) return res.status(400).send(`The user with the given: ${userByEmail ? "email" : ""} ${userByUsername ? "username" : ""} already exists`);
+			if (userByEmail || userByUsername) return res.status(400).json({error: `The user with the given: ${userByEmail ? "email" : ""} ${userByUsername ? "username" : ""} already exists`});
 		} catch (err) {
 			if (err instanceof TypeError) {
-				return res.status(400).send(err.message);
+				return res.status(400).json({error: err.message});
 			}
 			else {
-				return res.status(500).send("Internal server error");
+				return res.status(500).json({error: "Internal server error"});
 			}
 		}
 		return next();
@@ -45,8 +44,8 @@ export default class UserController {
 
 	public static async authenticate(req: Request, res: Response, next: Function) {
 		const { login, password } = req.body;
-		if (!login || !password) return res.status(400).send("Missing arguments");
-		else if (typeof login !== "string" || typeof password !== "string") return res.status(400).send("Invalid arguments type");
+		if (!login || !password) return res.status(400).json({error: "Missing arguments"});
+		else if (typeof login !== "string" || typeof password !== "string") return res.status(400).json({error: "Invalid arguments type"});
 
 		// username and email check
 		let user;
@@ -54,25 +53,25 @@ export default class UserController {
 			const userByEmail = await User.getUserByEmail(login);
 			if (!userByEmail) {
 				const userByUsername = await User.getUserByUsername(login);
-				if (!userByUsername) return res.status(400).send("The user with the given username or email does not exist");
+				if (!userByUsername) return res.status(400).json({error: "The user with the given username or email does not exist"});
 				user = userByUsername;
 			}
 			else {
 				user = userByEmail;
 			}
-			if (!user) return res.status(400).send("The user with the given username or email does not exist");
+			if (!user) return res.status(400).json({error: "The user with the given username or email does not exist"});
 		} catch (err) {
 			if (err instanceof TypeError) {
-				return res.status(400).send(err.message);
+				return res.status(400).json({error: err.message});
 			}
 			else {
-				return res.status(500).send("Internal server error");
+				return res.status(500).json({error: "Internal server error"});
 			}
 		}
 
 		// password check
 		bcrypt.compare(password, user.password, (err, result) => {
-			if (err) return res.status(500).send("Internal server error");
+			if (err) return res.status(500).json({error: "Internal server error"});
 			if (result) {
 				const newToken = jwt.sign({
 					id: user.id,
