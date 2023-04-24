@@ -74,15 +74,15 @@ export default class UserController {
 		bcrypt.compare(password, user.password, (err, result) => {
 			if (err) return res.status(500).send("Internal server error");
 			if (result) {
-				const token = jwt.sign({
+				const newToken = jwt.sign({
 					id: user.id,
 					username: user.username,
 					ip: req.ip // using token from another ip will invalidate it
 				},
 					process.env.APP_SECRET);
-				return res.status(200).send(token);
+				return res.status(200).cookie("token", newToken, {httpOnly: true, secure: true, sameSite: "strict", maxAge: parseInt(process.env.TOKEN_EXPIREIN) + 1}).json({message: "Token created"});
 			}
-			else res.status(400).send("Invalid password");
+			else res.status(400).json({error: "Invalid password"});
 		});
 	}
 
@@ -90,15 +90,15 @@ export default class UserController {
 		return new Promise(async (resolve, reject) => {
 			// is token revoked?
 			const revokedToken = await RevokedToken.isTokenRevoked(token);
-			if (revokedToken) return reject(new Error("Unauthenticated - token revoked"));
+			if (revokedToken) return reject(new Error("Token revoked"));
 
 			// is token valid?
 			jwt.verify(token, process.env.APP_SECRET, (err, decoded) => {
-				if (err) return reject(new Error("Unauthenticated"));
+				if (err) return reject(new Error("Invalid Token"));
 				if (decoded.ip !== ip) {
 					const revokedToken = new RevokedToken(token);
 					revokedToken.revoke();
-					return reject(new Error("Unauthenticated - token revoked"));
+					return reject(new Error("Token revoked"));
 				}
 				const issuedAt = decoded.iat * 1000;
 				const now = new Date();
@@ -107,7 +107,7 @@ export default class UserController {
 				const refreshTime = parseInt(process.env.TOKEN_REFRESH);
 
 				// is token expired?
-				if (timeLeft <= 0) return reject(new Error("Unauthenticated - token expired"));
+				if (timeLeft <= 0) return reject(new Error("Token expired"));
 
 				const result = {
 					token: decoded,
@@ -120,33 +120,47 @@ export default class UserController {
 
 	public static async verify(req: Request, res: Response, next: Function) {
 		const token = req.headers["authorization"];
-		if (!token) return res.status(400).send("Token must be provided");
-		if (typeof token !== "string") return res.status(400).send("Token must be a string");
+		if (!token) return res.status(400).json({error: "Token must be provided"});
+		if (typeof token !== "string") return res.status(400).json({error: "Token must be a string"});
 
 		try {
 			await UserController.verifyToken(token, req.ip);
 		} catch (err) {
-			return res.status(401).send(err.message);
+			return res.status(401).json({error: err.message});
 		}
 		return next();
 	}
 
 	public static async refresh(req: Request, res: Response) {
 		const token = req.headers["authorization"];
-		if (!token) return res.status(400).send("Unauthenticated");
-		if (typeof token !== "string") return res.status(400).send("Unauthenticated");
+		if (!token) return res.status(400).json({error: "Token must be provided"});
+		if (typeof token !== "string") return res.status(400).json({error: "Token must be a string"});
 
 		try {
 			const result = await UserController.verifyToken(token, req.ip);
-			if (!result.refreshable) return res.status(400).send("Unauthenticated - token not refreshable");
+			if (!result.refreshable) return res.status(400).json({error: "Unauthenticated - token not refreshable"});
 			const newToken = jwt.sign({
 				id: result.token.id,
 				username: result.token.username,
 				ip: req.ip
 			}, process.env.APP_SECRET);
-			return res.status(200).send(newToken);
+			return res.status(200).cookie("token", newToken, {httpOnly: true, secure: true, sameSite: "strict", maxAge:  parseInt(process.env.TOKEN_EXPIREIN) + 1}).json({message: "Token created"});
 		} catch (err) {
-			return res.status(401).send(err.message);
+			return res.status(401).json({error: err.message});
+		}
+	}
+
+	public static async revoke(req: Request, res: Response) {
+		const token = req.headers["authorization"];
+		if (!token) return res.status(400).json({error: "Token must be provided"});
+		if (typeof token !== "string") return res.status(400).json({error: "Token must be a string"});
+		try {
+			await UserController.verifyToken(token, req.ip);
+			const revokedToken = new RevokedToken(token);
+			await revokedToken.revoke();
+			return res.status(200).json({error: "Token revoked"});
+		} catch (err) {
+			return res.status(401).json({error: err.message});
 		}
 	}
 }
