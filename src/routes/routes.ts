@@ -12,5 +12,7 @@ router.post("/api/v1/auth/verify", UserController.verify, (req, res) => {
 
 router.post("/api/v1/auth/refresh", UserController.refresh);
 
-router.post("/api/v1/auth/revoke", UserController.revoke);
+router.post("/api/v1/auth/revoke", UserController.revoke); // like logout
+
+
 export default router;
